@@ -6,6 +6,8 @@ The crediting half of an on-chain deposit system, built on **AWS SQS, Lambda and
 
 [base-usdc-indexer](https://github.com/BrianLiu0531/base-usdc-indexer) detects USDC transfers on Base and emits `transfer.confirmed` (and, after a reorg, `transfer.reverted`) events through a transactional outbox. This service consumes those events and keeps a ledger of what each account has been credited. **Every event is applied exactly once**, however many times SQS delivers it, including when two copies of a message are processed at the same moment.
 
+> 📘 **中文學習筆記：[docs/aws-guide.zh-TW.md](docs/aws-guide.zh-TW.md)**。說明每個 AWS 服務的概念與設計原理、適用時機、操作手冊、部署時遇到的問題，以及面試問答。
+
 **Stack:** Go · AWS Lambda (arm64, `provided.al2023`) · SQS FIFO + DLQ · DynamoDB · CloudWatch · Terraform · GitHub Actions with OIDC
 
 ```mermaid
@@ -120,4 +122,6 @@ internal/handler   SQS batch handling, partial failures, FIFO ordering
 internal/poller    receive/handle/delete loop used by cmd/local
 terraform/bootstrap  state bucket, GitHub OIDC deploy role, budget
 terraform/app        SQS FIFO + DLQ, Lambda, DynamoDB, IAM, CloudWatch alarms
+scripts/terraform-in-docker.sh  run Terraform in a container with your current AWS CLI login
+docs/aws-guide.zh-TW.md         study guide (Traditional Chinese)
 ```
