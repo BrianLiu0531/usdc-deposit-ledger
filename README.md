@@ -42,7 +42,11 @@ A deposit credits the receiver and a withdrawal debits the sender. A transfer be
 
 ## Verified end to end
 
-The indexer and this consumer were run against **live Base Sepolia traffic**, with ElasticMQ standing in for SQS and DynamoDB Local for DynamoDB:
+**On AWS (ap-southeast-2):** the stack was deployed from GitHub Actions through OIDC. The indexer then published live Base Sepolia transfers to the real SQS queue, and the Lambda function credited them to DynamoDB. The ledger matched the indexer's finalized totals exactly: 32 transfers, net `-4000` base units, and an empty DLQ.
+
+That run also surfaced a problem the local stand-ins never showed. Parallel Lambda invocations updating the same account's balance item caused **`TransactionConflict`** cancellations. No event was lost or double-applied: the failed messages were retried after the visibility timeout. But crediting was delayed by 3 minutes, so the ledger now retries conflicts immediately, with jittered backoff. A whole-transaction retry can never apply twice.
+
+**Locally**, with ElasticMQ standing in for SQS and DynamoDB Local for DynamoDB:
 
 - **28 finalized transfers** were indexed, published, consumed and credited. The DynamoDB ledger total (`-10000` base units over 28 entries) matched the indexer's own finalized net flow exactly.
 - **Every outbox event was then sent again.** The ledger did not change: SQS deduplication dropped the resends, and the conditional write covers resends after the window.
@@ -57,6 +61,8 @@ go test ./...
 - **Ledger** (against DynamoDB Local):
   - redelivered events are credited once
   - **20 concurrent workers given the same event credit it exactly once**
+  - 20 different events for one account at once all succeed (conflicts are retried)
+  - conflicts are retried and then given up on, and a duplicate is detected whichever item fails its condition
   - reverts apply in any order, including re-inclusion in a new block
   - withdrawals, internal transfers and self-transfers
   - transfers between unwatched addresses are ignored

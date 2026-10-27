@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"math/rand/v2"
 	"sort"
 	"strconv"
 	"strings"
@@ -169,16 +170,49 @@ func (l *Ledger) Apply(ctx context.Context, t event.Transfer, value *big.Int) (O
 
 	// The marker's condition is the idempotency guarantee. (A ClientRequestToken would not help: the
 	// items carry timestamps, so a concurrent redelivery would fail with a parameter mismatch instead.)
-	_, err := l.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: items})
+	input := &dynamodb.TransactWriteItemsInput{TransactItems: items}
+	for attempt := 1; ; attempt++ {
+		_, err := l.db.TransactWriteItems(ctx, input)
+		switch reason := cancellation(err); {
+		case err == nil:
+			return Applied, nil
+		case reason == "ConditionalCheckFailed":
+			return Duplicate, nil
+		case reason == "TransactionConflict" && attempt < maxConflictAttempts:
+			// Another invocation is updating the same account's balance item right now. Such conflicts
+			// clear within milliseconds, so retry here instead of waiting out the queue's visibility
+			// timeout. Each attempt is the whole transaction, so a retry can never apply twice.
+			select {
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			case <-time.After(conflictBackoff(attempt)):
+			}
+		default:
+			return 0, fmt.Errorf("apply %s: %w", t.EventID, err)
+		}
+	}
+}
+
+const maxConflictAttempts = 6
+
+// conflictBackoff is exponential with full jitter: up to 20ms, 40ms, 80ms, ...
+func conflictBackoff(attempt int) time.Duration {
+	return time.Duration(rand.Int64N(int64(10*time.Millisecond) << attempt))
+}
+
+// cancellation returns the first non-"None" reason a transaction was cancelled for, or "".
+// Reasons are listed per item; the marker is item 0, so a duplicate reports ConditionalCheckFailed there.
+func cancellation(err error) string {
 	var cancelled *types.TransactionCanceledException
-	if errors.As(err, &cancelled) && len(cancelled.CancellationReasons) > 0 &&
-		aws.ToString(cancelled.CancellationReasons[0].Code) == "ConditionalCheckFailed" {
-		return Duplicate, nil
+	if !errors.As(err, &cancelled) {
+		return ""
 	}
-	if err != nil {
-		return 0, fmt.Errorf("apply %s: %w", t.EventID, err)
+	for _, r := range cancelled.CancellationReasons {
+		if code := aws.ToString(r.Code); code != "" && code != "None" {
+			return code
+		}
 	}
-	return Applied, nil
+	return ""
 }
 
 func entryKey(t event.Transfer) string {

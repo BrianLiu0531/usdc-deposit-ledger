@@ -165,3 +165,29 @@ func TestRejectsAmountsBeyondDynamoDBPrecision(t *testing.T) {
 		t.Fatalf("got %v, want ErrInvalid", err)
 	}
 }
+
+// TestConcurrentEventsForOneAccount credits 20 different deposits to the same account at once, as
+// parallel Lambda invocations do; transaction conflicts on the balance item must be retried, not failed.
+func TestConcurrentEventsForOneAccount(t *testing.T) {
+	l := setup(t)
+	var wg sync.WaitGroup
+	errs := make(chan error, 20)
+	for i := range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ev, v := transfer(event.Confirmed, 100+i, 50+i, carol, alice, 10)
+			if out, err := l.Apply(context.Background(), ev, v); err != nil || out != ledger.Applied {
+				errs <- fmt.Errorf("event %d: %v, %v", i, out, err)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+	if bal, n := balance(t, l, alice); bal != 200 || n != 20 {
+		t.Fatalf("balance %d over %d entries, want 200 over 20", bal, n)
+	}
+}
