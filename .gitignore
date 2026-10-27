@@ -6,3 +6,4 @@ dist/
 *.tfvars
 !example.tfvars
 .env
+*.tfplan
