@@ -160,7 +160,8 @@ data "aws_iam_policy_document" "deploy" {
     actions = [
       "sqs:ListQueues", "dynamodb:ListTables", "dynamodb:DescribeLimits", "lambda:GetAccountSettings",
       "lambda:ListEventSourceMappings", "lambda:CreateEventSourceMapping", "lambda:GetEventSourceMapping",
-      "lambda:UpdateEventSourceMapping", "lambda:DeleteEventSourceMapping", "lambda:TagResource",
+      "lambda:UpdateEventSourceMapping", "lambda:DeleteEventSourceMapping",
+      "lambda:TagResource", "lambda:UntagResource", "lambda:ListTags", # event source mappings are tagged too
       "logs:DescribeLogGroups", "cloudwatch:DescribeAlarms", "sns:ListTopics",
     ]
     resources = ["*"]
