@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:3.3.1
+        ports:
+          - 8000:8000
+      sqs:
+        image: softwaremill/elasticmq-native:1.7.0
+        ports:
+          - 9324:9324
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: go vet ./...
+      - name: Tests (DynamoDB Local + ElasticMQ)
+        run: go test -race -count=1 ./...
+      - name: Build the Lambda package
+        run: |
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath -ldflags="-s -w" -o dist/bootstrap ./cmd/consumer
+          (cd dist && zip -q consumer.zip bootstrap)
+      - uses: actions/upload-artifact@v5
+        with:
+          name: consumer-lambda
+          path: dist/consumer.zip
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive terraform
+      - name: Validate
+        run: |
+          mkdir -p dist && touch dist/consumer.zip
+          for stack in bootstrap app; do
+            terraform -chdir=terraform/$stack init -backend=false -input=false
+            terraform -chdir=terraform/$stack validate
+          done

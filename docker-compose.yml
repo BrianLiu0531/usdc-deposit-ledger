@@ -1,0 +1,30 @@
+# Local AWS stand-ins: ElasticMQ for SQS and DynamoDB Local, plus the consumer polling them.
+services:
+  sqs:
+    image: softwaremill/elasticmq-native:1.7.0
+    ports:
+      - "9324:9324"
+    volumes:
+      - ./docker/elasticmq.conf:/opt/elasticmq.conf:ro
+
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.1
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m"
+    ports:
+      - "8000:8000"
+
+  consumer:
+    build: .
+    profiles: ["consumer"]
+    environment:
+      AWS_ENDPOINT_URL_SQS: http://sqs:9324
+      AWS_ENDPOINT_URL_DYNAMODB: http://dynamodb:8000
+      AWS_REGION: ap-southeast-2
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      QUEUE_URL: http://sqs:9324/000000000000/usdc-transfers.fifo
+      TABLE_NAME: usdc-ledger
+      WATCH_ADDRESSES: ${WATCH_ADDRESSES:-0x2e78bcdcbf7ba1adc2252819d6134d6549960f3a,0xa849bbad82f9edafdf9a5550cc874276138779d9}
+    depends_on: [sqs, dynamodb]
