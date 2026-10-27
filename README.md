@@ -95,10 +95,9 @@ go run ./cmd/indexer
    terraform init && terraform apply -var budget_email=you@example.com
    ```
    This creates the state bucket, the GitHub OIDC provider, the deploy role and a US$5 monthly budget alert.
-2. **Repository variables:** add these in GitHub under Settings → Secrets and variables → Actions → Variables:
-   - `AWS_DEPLOY_ROLE_ARN` and `TF_STATE_BUCKET`, both from the bootstrap outputs
-   - `WATCH_ADDRESSES`, e.g. `["0xabc…"]`
-   - optionally `ALARM_EMAIL`
+2. **GitHub settings** (Settings → Secrets and variables → Actions):
+   - **Secrets:** `AWS_DEPLOY_ROLE_ARN` and `TF_STATE_BUCKET`, from the bootstrap outputs. They are secrets because they contain the account ID and workflow logs on a public repo are public.
+   - **Variables:** `WATCH_ADDRESSES` (JSON list, e.g. `["0xabc…"]`) and optionally `ALARM_EMAIL`.
 3. **Run the Deploy workflow** (Actions → Deploy → Run workflow). It tests, builds the arm64 package and runs `terraform apply`. The outputs include the queue URL and the publisher policy.
 4. **Point the indexer at the queue:** set `OUTBOX_SQS_QUEUE_URL` to the `queue_url` output, and give whatever runs the indexer the `publisher_policy_arn` policy.
 
