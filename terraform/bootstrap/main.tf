@@ -32,6 +32,16 @@ variable "github_repo" {
   default     = "BrianLiu0531/usdc-deposit-ledger"
 }
 
+variable "github_subject_prefix" {
+  description = <<-EOT
+    The OIDC "sub" prefix GitHub issues for the repo. Newer repos use immutable IDs
+    (repo:<owner>@<owner_id>/<repo>@<repo_id>), so a deleted and re-created repo with the same
+    name cannot assume the role. Find it with: gh api repos/<owner>/<repo>/actions/oidc/customization/sub
+  EOT
+  type        = string
+  default     = "repo:BrianLiu0531@49802872/usdc-deposit-ledger@1435454456"
+}
+
 variable "name" {
   description = "Prefix of every app resource; the deploy role can only touch resources with this prefix"
   type        = string
@@ -110,7 +120,10 @@ data "aws_iam_policy_document" "github_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      values = [
+        "${var.github_subject_prefix}:ref:refs/heads/main",
+        "repo:${var.github_repo}:ref:refs/heads/main", # repos still on the name-based format
+      ]
     }
   }
 }
